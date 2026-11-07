@@ -43,4 +43,9 @@ done
 sleep "${SETTLE:-45}"
 shot shell
 grep -E "LLMOS_SHELL_(UP|DOWN)" "$STATE/serial.log" || echo "no health report within ${TIMEOUT}s"
+if (( status != 0 )); then
+  echo "::group::serial console (last 200 lines)"
+  tail -n 200 "$STATE/serial.log" | tr -d '\r'
+  echo "::endgroup::"
+fi
 exit $status

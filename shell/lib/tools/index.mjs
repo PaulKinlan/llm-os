@@ -35,14 +35,14 @@ function serialize(result) {
  * Execute a tool call.
  * @param {string} name
  * @param {object} input
- * @param {{caller: string, projectId?: string, allowed?: string[]}} ctx
+ * @param {{caller: string, projectId?: string, allowed?: string[], signal?: AbortSignal}} ctx
  * @returns {Promise<{ok: boolean, content: string}>}
  */
 export async function callTool(name, input, ctx) {
   const tool = byName.get(name);
   if (!tool) return { ok: false, content: `unknown tool "${name}"` };
   if (ctx.allowed && !ctx.allowed.includes(name)) {
-    await audit({ caller: ctx.caller, tool: name, input, outcome: "not-permitted" });
+    await audit({ caller: ctx.caller, tool: name, input: redact(name, input), outcome: "not-permitted" });
     return { ok: false, content: `this app is not permitted to call "${name}"` };
   }
   const problem = validateInput(tool.input_schema, input);
@@ -54,9 +54,10 @@ export async function callTool(name, input, ctx) {
       approved = await request(
         "confirm",
         { tool: name, caller: ctx.caller, summary: tool.summarize ? tool.summarize(input) : name, input: redact(name, input), projectId: ctx.projectId },
-        { timeoutMs: 0 },
+        { timeoutMs: 0, signal: ctx.signal },
       );
     } catch (err) {
+      if (ctx.signal?.aborted) return { ok: false, content: "Cancelled: the user stopped this turn." };
       return { ok: false, content: `could not ask the user for approval: ${err.message}` };
     }
     if (!approved) {
@@ -65,6 +66,7 @@ export async function callTool(name, input, ctx) {
     }
   }
 
+  if (ctx.signal?.aborted) return { ok: false, content: "Cancelled: the user stopped this turn." };
   const started = Date.now();
   try {
     const result = await tool.run(input, ctx);

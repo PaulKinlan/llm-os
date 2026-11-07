@@ -19,11 +19,12 @@ async function sdk() {
   return sdkSource;
 }
 
+// The trusted bootstrap (CSP + SDK) always comes first, before any app markup, so
+// nothing in the app (comments, scripts, a missing <head>) can move or disable it.
 function inject(html, sdkCode) {
-  const head = `<meta http-equiv="Content-Security-Policy" content="${CSP}"><script>${sdkCode.replace(/<\/script/gi, "<\\/script")}<\/script>`;
-  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => m + head);
-  if (/<!doctype html>/i.test(html)) return html.replace(/<!doctype html>/i, (m) => m + head);
-  return `<!doctype html>${head}${html}`;
+  const boot = `<!doctype html><meta http-equiv="Content-Security-Policy" content="${CSP}">` +
+    `<script>${sdkCode.replace(/<\/script/gi, "<\\/script")}<\/script>`;
+  return boot + html.replace(/^\s*<!doctype[^>]*>/i, "");
 }
 
 function show(slug) {
@@ -40,7 +41,17 @@ export function openApps() {
   return [...open.keys()];
 }
 
-export async function openApp(slug, { version, focus = true } = {}) {
+const loading = new Map(); // slug -> in-flight openApp promise
+
+export function openApp(slug, opts = {}) {
+  const inflight = loading.get(slug);
+  if (inflight) return inflight.then((entry) => (opts.focus === false ? entry : (show(slug), entry)));
+  const p = loadApp(slug, opts).finally(() => loading.delete(slug));
+  loading.set(slug, p);
+  return p;
+}
+
+async function loadApp(slug, { version, focus = true } = {}) {
   const existing = open.get(slug);
   if (existing && (version == null || existing.version === version)) {
     if (focus) show(slug);
@@ -57,24 +68,32 @@ export async function openApp(slug, { version, focus = true } = {}) {
     frame.setAttribute("sandbox", "allow-scripts");
     frame.setAttribute("allow", "");
     frame.title = app.title;
+    const wrap = document.createElement("span");
+    wrap.className = "tab";
     const tab = document.createElement("button");
     tab.setAttribute("role", "tab");
-    tab.innerHTML = `<span></span><span class="close" aria-label="Close app">×</span>`;
-    tab.addEventListener("click", (e) => (e.target.classList.contains("close") ? closeApp(slug) : show(slug)));
-    $("#tabs").append(tab);
+    tab.addEventListener("click", () => show(slug));
+    const close = document.createElement("button");
+    close.className = "close";
+    close.textContent = "×";
+    close.addEventListener("click", () => closeApp(slug));
+    wrap.append(tab, close);
+    $("#tabs").append(wrap);
     $("#frames").append(frame);
-    entry = { frame, tab, slug };
+    entry = { frame, tab, wrap, close, slug };
     open.set(slug, entry);
     frame.addEventListener("load", () => connect(entry));
   }
-  entry.tab.firstChild.textContent = app.title;
+  entry.tab.textContent = app.title;
+  entry.close.setAttribute("aria-label", `Close ${app.title}`);
   entry.version = app.version;
   entry.tools = new Map();
   entry.ready = false;
   entry.waiting = new Map();
   entry.readyPromise = new Promise((r) => (entry.markReady = r));
   entry.frame.srcdoc = srcdoc;
-  if (focus) show(slug);
+  if (focus || !current) show(slug);
+  else entry.frame.hidden = current !== slug; // load in the background without covering the visible app
   return entry;
 }
 
@@ -140,7 +159,7 @@ export function closeApp(slug) {
   const a = open.get(slug);
   if (!a) return;
   a.frame.remove();
-  a.tab.remove();
+  a.wrap.remove();
   open.delete(slug);
   if (current === slug) current = open.keys().next().value ?? null;
   show(current);

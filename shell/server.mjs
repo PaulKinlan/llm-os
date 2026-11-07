@@ -58,13 +58,9 @@ async function serveStatic(res, rel) {
   }
 }
 
-const appStorage = new Map(); // slug -> object, persisted under apps/<slug>/storage.json
-async function storageFile(slug) {
-  return path.join(config.dataDir, "apps", slug, "storage.json");
-}
-
 const routes = [
   ["GET", /^\/api\/state$/, async () => ({
+    uiConnected: events.clientCount() > 0,
     hasKey: Boolean(await store.getApiKey()) || config.fakeLlm,
     model: config.fakeLlm ? "offline demo model" : config.model,
     dryRun: config.dryRun,
@@ -128,18 +124,10 @@ const routes = [
   }],
   ["POST", /^\/api\/apps\/([a-z0-9-]+)\/storage$/, async (req, res, [slug]) => {
     const { op, key, value } = await readBody(req, 256 * 1024);
-    const file = await storageFile(slug);
-    let data = appStorage.get(slug);
-    if (!data) {
-      try { data = JSON.parse(await fs.readFile(file, "utf8")); } catch { data = {}; }
-      appStorage.set(slug, data);
-    }
-    if (op === "get") return { value: data[key] ?? null };
+    if (typeof key !== "string" || !key || key.length > 256) throw Object.assign(new Error("key must be a non-empty string"), { status: 400 });
+    if (op === "get") return { value: await store.appStorageGet(slug, key) };
     if (op === "set") {
-      data[key] = value;
-      if (JSON.stringify(data).length > 1024 * 1024) throw Object.assign(new Error("app storage is limited to 1 MiB"), { status: 413 });
-      await fs.mkdir(path.dirname(file), { recursive: true });
-      await fs.writeFile(file, JSON.stringify(data));
+      await store.appStorageSet(slug, key, value ?? null);
       return { ok: true };
     }
     throw Object.assign(new Error("op must be get or set"), { status: 400 });
@@ -148,8 +136,8 @@ const routes = [
 
 const server = http.createServer(async (req, res) => {
   if (!allowed(req)) return send(res, 403, "forbidden");
-  const url = new URL(req.url, `http://${req.headers.host}`);
   try {
+    const url = new URL(req.url, `http://${req.headers.host}`);
     for (const [method, re, handler] of routes) {
       const m = url.pathname.match(re);
       if (m && req.method === method) {

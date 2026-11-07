@@ -6,7 +6,7 @@
 //   credentials.json (0600)      { anthropicApiKey }
 import fs from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes } from "node:crypto";
 import { config } from "./config.mjs";
 
 const dir = (...p) => path.join(config.dataDir, ...p);
@@ -21,9 +21,20 @@ async function readJson(file, fallback) {
 
 async function writeJson(file, value, mode) {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
+  const tmp = `${file}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
   await fs.writeFile(tmp, JSON.stringify(value, null, 2), mode ? { mode } : undefined);
   await fs.rename(tmp, file);
+}
+
+// Serialise read-modify-write sequences per key (an app slug, a project id).
+const locks = new Map();
+export function withLock(key, fn) {
+  const prev = locks.get(key) || Promise.resolve();
+  const next = prev.then(fn, fn);
+  const tail = next.catch(() => {});
+  locks.set(key, tail);
+  tail.then(() => { if (locks.get(key) === tail) locks.delete(key); });
+  return next;
 }
 
 // ---------- credentials ----------
@@ -34,10 +45,12 @@ export async function getApiKey() {
   return creds.anthropicApiKey || null;
 }
 
-export async function setApiKey(key) {
-  const creds = await readJson(dir("credentials.json"), {});
-  creds.anthropicApiKey = key;
-  await writeJson(dir("credentials.json"), creds, 0o600);
+export function setApiKey(key) {
+  return withLock("credentials", async () => {
+    const creds = await readJson(dir("credentials.json"), {});
+    creds.anthropicApiKey = key;
+    await writeJson(dir("credentials.json"), creds, 0o600);
+  });
 }
 
 // ---------- projects ----------
@@ -69,13 +82,18 @@ export async function createProject(title = "New project") {
   return p;
 }
 
+// Ids of projects deleted while a turn may still be running; their saves are dropped.
+const deletedProjects = new Set();
+
 export async function saveProject(p) {
+  if (deletedProjects.has(p.id)) return;
   p.updatedAt = new Date().toISOString();
   await writeJson(dir("projects", `${p.id}.json`), p);
 }
 
 export async function deleteProject(id) {
   if (!ID_RE.test(id)) return false;
+  deletedProjects.add(id);
   await fs.rm(dir("projects", `${id}.json`), { force: true });
   return true;
 }
@@ -112,7 +130,12 @@ export async function getApp(slug) {
   return { ...meta, html };
 }
 
-export async function saveApp({ slug, title, description, permissions, html, projectId }) {
+// Callers that read then write an app (edit_app) must hold withLock(`app:${slug}`) across both.
+export function saveApp(fields) {
+  return withLock(`app:${fields.slug}`, () => saveAppUnlocked(fields));
+}
+
+export async function saveAppUnlocked({ slug, title, description, permissions, html, projectId }) {
   if (!SLUG_RE.test(slug)) throw new Error(`invalid app slug "${slug}"`);
   const existing = await readJson(dir("apps", slug, "meta.json"), null);
   const now = new Date().toISOString();
@@ -140,6 +163,29 @@ export async function saveApp({ slug, title, description, permissions, html, pro
 
 export async function deleteApp(slug) {
   if (!SLUG_RE.test(slug)) return false;
-  await fs.rm(dir("apps", slug), { recursive: true, force: true });
+  await withLock(`app:${slug}`, () => fs.rm(dir("apps", slug), { recursive: true, force: true }));
   return true;
+}
+
+// ---------- per-app key/value storage (os.storage in mini apps) ----------
+
+const APP_STORAGE_LIMIT = 1024 * 1024;
+
+export async function appStorageGet(slug, key) {
+  if (!SLUG_RE.test(slug)) throw new Error("invalid app");
+  const data = await readJson(dir("apps", slug, "storage.json"), {});
+  return Object.hasOwn(data, key) ? data[key] : null;
+}
+
+export function appStorageSet(slug, key, value) {
+  if (!SLUG_RE.test(slug)) throw new Error("invalid app");
+  return withLock(`app:${slug}`, async () => {
+    if (!(await readJson(dir("apps", slug, "meta.json"), null))) throw new Error("no such app");
+    const data = await readJson(dir("apps", slug, "storage.json"), {});
+    const next = { ...data, [key]: value };
+    if (JSON.stringify(next).length > APP_STORAGE_LIMIT) {
+      throw Object.assign(new Error("app storage is limited to 1 MiB"), { status: 413 });
+    }
+    await writeJson(dir("apps", slug, "storage.json"), next);
+  });
 }

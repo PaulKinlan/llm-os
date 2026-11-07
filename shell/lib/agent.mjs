@@ -38,17 +38,18 @@ export function stop(projectId) {
 
 export async function runTurn(projectId, userText) {
   if (running.has(projectId)) throw new Error("a turn is already running in this project");
-  const project = await store.getProject(projectId);
-  if (!project) throw new Error("no such project");
-
+  // reserve the slot before any await so concurrent requests cannot both start a turn
   const ac = new AbortController();
   running.set(projectId, ac);
-  project.messages.push({ role: "user", content: [{ type: "text", text: userText }] });
-  if (project.title === "New project") project.title = userText.slice(0, 48);
-  await store.saveProject(project);
-  emit("turn_start", { projectId, title: project.title });
 
   try {
+    const project = await store.getProject(projectId);
+    if (!project) throw new Error("no such project");
+    project.messages.push({ role: "user", content: [{ type: "text", text: userText }] });
+    if (project.title === "New project") project.title = userText.slice(0, 48);
+    await store.saveProject(project);
+    emit("turn_start", { projectId, title: project.title });
+
     for (let i = 0; i < config.maxToolLoops; i++) {
       let message;
       emit("assistant_start", { projectId });
@@ -87,6 +88,7 @@ export async function runTurn(projectId, userText) {
           role: "user",
           content: calls.map((c) => ({ type: "tool_result", tool_use_id: c.id, is_error: true, content: "Output was cut off at max_tokens; the call was not run. Split the work into smaller steps." })),
         });
+        await store.saveProject(project);
         continue;
       }
 
@@ -94,7 +96,7 @@ export async function runTurn(projectId, userText) {
       const results = await Promise.all(
         calls.map(async (c) => {
           emit("tool_start", { projectId, id: c.id, name: c.name, input: c.input });
-          const r = await callTool(c.name, c.input, { caller: "model", projectId });
+          const r = await callTool(c.name, c.input, { caller: "model", projectId, signal: ac.signal });
           emit("tool_end", { projectId, id: c.id, name: c.name, ok: r.ok, preview: r.content.slice(0, 2000) });
           return { type: "tool_result", tool_use_id: c.id, content: r.content, ...(r.ok ? {} : { is_error: true }) };
         }),

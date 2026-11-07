@@ -14,6 +14,14 @@ export function validateInput(schema, input) {
     }
     if (p.type && !typeMatches(p.type, value)) return `field "${key}" must be ${p.type}`;
     if (p.enum && !p.enum.includes(value)) return `field "${key}" must be one of ${p.enum.join(", ")}`;
+    if (typeof value === "number") {
+      if (typeof p.minimum === "number" && value < p.minimum) return `field "${key}" must be at least ${p.minimum}`;
+      if (typeof p.maximum === "number" && value > p.maximum) return `field "${key}" must be at most ${p.maximum}`;
+    }
+    if (typeof value === "string") {
+      if (typeof p.minLength === "number" && value.length < p.minLength) return `field "${key}" is too short`;
+      if (typeof p.maxLength === "number" && value.length > p.maxLength) return `field "${key}" is too long`;
+    }
     if (p.type === "array" && p.items?.type && !value.every((v) => typeMatches(p.items.type, v))) {
       return `field "${key}" must be an array of ${p.items.type}`;
     }

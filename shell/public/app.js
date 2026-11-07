@@ -127,6 +127,7 @@ async function selectProject(id) {
   try { localStorage.setItem("llmos.project", id); } catch {}
   state.live = null;
   const p = await api("GET", `/api/projects/${id}`);
+  if (state.projectId !== id) return; // a later selection won
   $("#conv-title").textContent = p.title;
   renderMessages(p.messages);
   setRunning(p.running);
@@ -195,6 +196,7 @@ const handlers = {
   async ui_query(e) { rpcReply(e.rpcId, async () => (e.what === "open_apps" ? stage.openApps() : null)); },
   async app_list_tools(e) { rpcReply(e.rpcId, () => stage.listTools(e.slug)); },
   async app_call_tool(e) { rpcReply(e.rpcId, () => stage.callTool(e.slug, e.tool, e.args)); },
+  rpc_cancel(e) { cancelConfirm(e.rpcId); },
 };
 
 async function rpcReply(id, fn) {
@@ -204,15 +206,29 @@ async function rpcReply(id, fn) {
   } catch (err) {
     payload = { id, error: err.message || String(err) };
   }
+  if (cancelled.delete(id)) return;
   await api("POST", "/api/rpc", payload).catch(() => {});
 }
 
 const confirmQueue = [];
+const cancelled = new Set();
 function askConfirm(e) {
   return new Promise((resolve) => {
     confirmQueue.push({ e, resolve });
     if (confirmQueue.length === 1) showNextConfirm();
   });
+}
+// the daemon gave up on a request (turn stopped): drop its prompt without answering
+function cancelConfirm(rpcId) {
+  const i = confirmQueue.findIndex((c) => c.e.rpcId === rpcId);
+  if (i < 0) return;
+  cancelled.add(rpcId);
+  if (i === 0) {
+    $("#confirm").returnValue = "deny";
+    $("#confirm").close();
+  } else {
+    confirmQueue.splice(i, 1)[0].resolve(false);
+  }
 }
 function showNextConfirm() {
   const next = confirmQueue[0];
@@ -273,7 +289,9 @@ $("#key-form").addEventListener("submit", async (ev) => {
 
 $("#composer").addEventListener("submit", (ev) => {
   ev.preventDefault();
+  if (state.running) return; // keep the draft until the current turn ends
   const text = $("#input").value;
+  if (!text.trim()) return;
   $("#input").value = "";
   send(text);
 });

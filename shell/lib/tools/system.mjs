@@ -80,7 +80,9 @@ export const systemTools = [
       const results = [];
       if (typeof percent === "number") results.push(out(await run("wpctl", ["set-volume", "-l", "1.5", "@DEFAULT_AUDIO_SINK@", `${Math.round(percent)}%`])));
       if (typeof mute === "boolean") results.push(out(await run("wpctl", ["set-mute", "@DEFAULT_AUDIO_SINK@", mute ? "1" : "0"])));
-      return results.length ? results : { error: "nothing to change: pass percent and/or mute" };
+      if (!results.length) return { error: "nothing to change: pass percent and/or mute" };
+      const failed = results.find((r) => r && typeof r === "object" && "error" in r);
+      return failed || results;
     },
   },
   {

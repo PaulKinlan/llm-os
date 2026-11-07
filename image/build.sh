@@ -34,6 +34,7 @@ file_permissions+=(
   ["/usr/local/bin/llmos-session"]="0:0:755"
   ["/usr/local/bin/llmos-launch"]="0:0:755"
   ["/usr/local/bin/llmos-firstboot"]="0:0:755"
+  ["/usr/local/bin/llmos-healthcheck"]="0:0:755"
   ["/etc/sudoers.d/llmos"]="0:0:440"
 )
 PERMS

@@ -1,0 +1,17 @@
+[Unit]
+Description=llmos shell daemon (agent loop + shell UI on 127.0.0.1:8800)
+After=llmos-firstboot.service network.target
+Requires=llmos-firstboot.service
+
+[Service]
+User=os
+Group=os
+WorkingDirectory=/usr/lib/llmos/shell
+# reach the user's session (PipeWire, Hyprland IPC) once tty1 autologin has created it
+Environment=HOME=/home/os XDG_RUNTIME_DIR=/run/user/%U DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
+ExecStart=/usr/bin/node /usr/lib/llmos/shell/server.mjs
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

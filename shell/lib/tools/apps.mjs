@@ -59,13 +59,16 @@ export const appTools = [
       ["slug", "old_str", "new_str"],
     ),
     async run({ slug, old_str, new_str }) {
-      const app = await store.getApp(slug);
-      if (!app) return { error: `no app "${slug}"` };
-      const count = app.html.split(old_str).length - 1;
-      if (count !== 1) return { error: `old_str must occur exactly once (found ${count})` };
-      const meta = await store.saveApp({ slug, html: app.html.replace(old_str, () => new_str) });
-      emit("app_open", { slug, version: meta.version, title: meta.title });
-      return { ok: true, slug, version: meta.version };
+      return store.withLock(`app:${slug}`, async () => {
+        const app = await store.getApp(slug);
+        if (!app) return { error: `no app "${slug}"` };
+        if (!old_str) return { error: "old_str must not be empty" };
+        const count = app.html.split(old_str).length - 1;
+        if (count !== 1) return { error: `old_str must occur exactly once (found ${count})` };
+        const meta = await store.saveAppUnlocked({ slug, html: app.html.replace(old_str, () => new_str) });
+        emit("app_open", { slug, version: meta.version, title: meta.title });
+        return { ok: true, slug, version: meta.version };
+      });
     },
   },
   {

@@ -19,6 +19,14 @@ export function addClient(res) {
   res.on("close", () => {
     clearInterval(ping);
     clients.delete(res);
+    // nobody is left to answer: fail pending requests closed (a reload re-asks nothing)
+    if (clients.size === 0) {
+      for (const [id, p] of pending) {
+        pending.delete(id);
+        if (p.timer) clearTimeout(p.timer);
+        p.reject(new Error("the shell UI disconnected"));
+      }
+    }
   });
 }
 
@@ -31,15 +39,28 @@ export function emit(type, data = {}) {
   for (const res of clients) res.write(payload);
 }
 
-export function request(type, data, { timeoutMs = 10000 } = {}) {
+export function request(type, data, { timeoutMs = 10000, signal } = {}) {
   if (clients.size === 0) return Promise.reject(new Error("the shell UI is not connected"));
+  if (signal?.aborted) return Promise.reject(new Error("cancelled"));
   const id = randomUUID();
   return new Promise((resolve, reject) => {
-    const timer = timeoutMs > 0 ? setTimeout(() => {
+    const done = () => {
       pending.delete(id);
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      done();
+      emit("rpc_cancel", { rpcId: id });
+      reject(new Error("cancelled"));
+    };
+    const timer = timeoutMs > 0 ? setTimeout(() => {
+      done();
+      emit("rpc_cancel", { rpcId: id });
       reject(new Error(`${type} timed out after ${timeoutMs}ms`));
     }, timeoutMs) : null;
-    pending.set(id, { resolve, reject, timer });
+    signal?.addEventListener("abort", onAbort, { once: true });
+    pending.set(id, { resolve: (v) => { done(); resolve(v); }, reject: (e) => { done(); reject(e); }, timer });
     emit(type, { rpcId: id, ...data });
   });
 }
@@ -47,8 +68,6 @@ export function request(type, data, { timeoutMs = 10000 } = {}) {
 export function answer(id, { result, error }) {
   const p = pending.get(id);
   if (!p) return false;
-  pending.delete(id);
-  if (p.timer) clearTimeout(p.timer);
   if (error) p.reject(new Error(String(error)));
   else p.resolve(result);
   return true;

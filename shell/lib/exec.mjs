@@ -10,12 +10,12 @@ function clip(s) {
   return s.slice(0, MAX_OUTPUT) + `\n…[truncated ${s.length - MAX_OUTPUT} bytes]`;
 }
 
-export function run(cmd, args = [], { timeoutMs = 15000, input, dryRun = config.dryRun } = {}) {
+export function run(cmd, args = [], { timeoutMs = 15000, input, dryRun = config.dryRun, env = process.env } = {}) {
   if (dryRun) {
     return Promise.resolve({ ok: true, dryRun: true, command: [cmd, ...args].join(" "), stdout: "", stderr: "", code: 0 });
   }
   return new Promise((resolve) => {
-    const child = execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024, env: process.env }, (err, stdout, stderr) => {
+    const child = execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024, env }, (err, stdout, stderr) => {
       const code = err ? (typeof err.code === "number" ? err.code : 1) : 0;
       resolve({
         ok: !err,

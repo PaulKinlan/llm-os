@@ -1,18 +1,15 @@
 #!/bin/bash
-# Start the shell daemon and the full-screen shell window, restarting either if it dies.
+# Open the full-screen shell window on the daemon, restarting it if it dies.
 STATE="$HOME/.local/state/llmos"
 mkdir -p "$STATE"
 PORT="${PORT:-8800}"
 
-(
-  while true; do
-    node /usr/lib/llmos/shell/server.mjs >> "$STATE/shell.log" 2>&1
-    echo "$(date -Is) shell daemon exited ($?), restarting" >> "$STATE/shell.log"
-    sleep 1
-  done
-) &
+# The daemon is a system service (llmos-shell.service); outside the image, start it here.
+if ! curl -sf "http://127.0.0.1:$PORT/api/state" >/dev/null && ! systemctl is-enabled --quiet llmos-shell 2>/dev/null; then
+  node /usr/lib/llmos/shell/server.mjs >> "$STATE/shell.log" 2>&1 &
+fi
 
-for _ in $(seq 1 100); do
+for _ in $(seq 1 150); do
   curl -sf "http://127.0.0.1:$PORT/api/state" >/dev/null && break
   sleep 0.2
 done

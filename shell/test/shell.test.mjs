@@ -79,3 +79,58 @@ test("a turn with the fake model runs a tool and stores append-only history", as
   assert.equal(saved.messages[2].content[0].type, "tool_result");
   assert.equal(saved.title, "show me system info");
 });
+
+test("validateInput enforces numeric bounds", () => {
+  const schema = { type: "object", properties: { percent: { type: "number", minimum: 1, maximum: 100 } }, required: ["percent"] };
+  assert.match(validateInput(schema, { percent: 0 }), /at least 1/);
+  assert.match(validateInput(schema, { percent: 101 }), /at most 100/);
+  assert.equal(validateInput(schema, { percent: 50 }), null);
+});
+
+test("open_url quotes the URL as one literal shell word", async () => {
+  const { shellQuote } = await import("../lib/tools/windows.mjs");
+  const { execFileSync } = await import("node:child_process");
+  const nasty = "https://x.test/a'$(touch /tmp/pwned)`id`";
+  assert.equal(execFileSync("sh", ["-c", `printf %s ${shellQuote(nasty)}`]).toString(), nasty);
+});
+
+test("two concurrent turns on one project: the second is refused", async () => {
+  const p = await store.createProject();
+  const a = agent.runTurn(p.id, "hello");
+  await assert.rejects(agent.runTurn(p.id, "again"), /already running/);
+  await a;
+  const saved = await store.getProject(p.id);
+  assert.equal(saved.messages.filter((m) => m.role === "user").length, 1);
+});
+
+test("a deleted project is not recreated by a turn still in flight", async () => {
+  const p = await store.createProject();
+  const turn = agent.runTurn(p.id, "show me system info");
+  await store.deleteProject(p.id);
+  await turn;
+  assert.equal(await store.getProject(p.id), null);
+});
+
+test("app storage: concurrent sets keep both keys, size limit leaves data unchanged", async () => {
+  await store.saveApp({ slug: "kv", title: "KV", html: "" });
+  await Promise.all([store.appStorageSet("kv", "a", 1), store.appStorageSet("kv", "b", 2)]);
+  assert.equal(await store.appStorageGet("kv", "a"), 1);
+  assert.equal(await store.appStorageGet("kv", "b"), 2);
+  await assert.rejects(store.appStorageSet("kv", "big", "x".repeat(1024 * 1024 + 1)), /1 MiB/);
+  assert.equal(await store.appStorageGet("kv", "big"), null);
+  await store.deleteApp("kv");
+  await store.saveApp({ slug: "kv", title: "KV again", html: "" });
+  assert.equal(await store.appStorageGet("kv", "a"), null);
+});
+
+test("concurrent edit_app calls on one app both apply", async () => {
+  await store.saveApp({ slug: "race", title: "Race", html: "<a>1</a><b>2</b>" });
+  const [r1, r2] = await Promise.all([
+    callTool("edit_app", { slug: "race", old_str: "<a>1</a>", new_str: "<a>one</a>" }, { caller: "model" }),
+    callTool("edit_app", { slug: "race", old_str: "<b>2</b>", new_str: "<b>two</b>" }, { caller: "model" }),
+  ]);
+  assert.ok(r1.ok && r2.ok);
+  const app = await store.getApp("race");
+  assert.equal(app.html, "<a>one</a><b>two</b>");
+  assert.equal(app.version, 3);
+});
