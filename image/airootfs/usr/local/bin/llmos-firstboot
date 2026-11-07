@@ -1,0 +1,21 @@
+#!/bin/bash
+# Runs as root before the tty1 autologin.
+set -u
+if ! id os >/dev/null 2>&1; then
+  useradd -m -G wheel,video,input,audio,render -s /bin/bash os 2>/dev/null || useradd -m -G wheel,video,input,audio -s /bin/bash os
+  passwd -d os >/dev/null
+fi
+
+# Development convenience: QEMU can pass the Anthropic key with
+#   -fw_cfg name=opt/llmos/anthropic_key,file=key.txt   (scripts/run-vm.sh does this)
+modprobe qemu_fw_cfg 2>/dev/null || true
+src=/sys/firmware/qemu_fw_cfg/by_name/opt/llmos/anthropic_key/raw
+if [ -r "$src" ]; then
+  dir=/home/os/.local/share/llmos
+  install -d -o os -g os -m 700 /home/os/.local /home/os/.local/share "$dir"
+  key=$(tr -d '\r\n' < "$src")
+  umask 077
+  printf '{"anthropicApiKey": "%s"}\n' "$key" > "$dir/credentials.json"
+  chown os:os "$dir/credentials.json"
+fi
+exit 0

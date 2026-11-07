@@ -1,0 +1,29 @@
+#!/bin/bash
+# Wait for the daemon and for the shell UI (Chromium) to connect to it, then print
+# one LLMOS_SHELL_UP / LLMOS_SHELL_DOWN line plus diagnostics on the console.
+out() { echo "$*" > /dev/console; }
+state=""
+for i in $(seq 1 150); do
+  state=$(curl -sf http://127.0.0.1:8800/api/state || true)
+  if [[ "$state" == *'"uiConnected":true'* ]]; then
+    out "LLMOS_SHELL_UP after $((i * 2))s"
+    exit 0
+  fi
+  sleep 2
+done
+
+out "LLMOS_SHELL_DOWN daemon=$([[ -n $state ]] && echo up || echo down) ui=disconnected"
+{
+  echo "----- llmos diagnostics -----"
+  loginctl list-sessions --no-legend
+  ls -l /dev/dri 2>&1
+  systemctl --no-pager --failed
+  journalctl -b --no-pager -u llmos-shell -u llmos-firstboot -u getty@tty1 | tail -n 40
+  for f in /home/os/.local/state/llmos/*.log /run/user/1000/hypr/*/hyprland.log; do
+    [[ -f $f ]] || continue
+    echo "----- $f -----"
+    tail -n 40 "$f"
+  done
+  echo "----- end diagnostics -----"
+} > /dev/console 2>&1
+exit 1

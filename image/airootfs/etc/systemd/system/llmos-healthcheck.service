@@ -1,0 +1,11 @@
+[Unit]
+Description=Report on the console when the llmos shell is up (used by the CI boot test)
+After=llmos-shell.service getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/llmos-healthcheck
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target
