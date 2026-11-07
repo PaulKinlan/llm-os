@@ -43,8 +43,8 @@ grep -vE '^\s*(#|$)' "$ROOT/image/packages.x86_64" >> "$P/packages.x86_64"
 sort -u -o "$P/packages.x86_64" "$P/packages.x86_64"
 
 # --- networking: NetworkManager instead of releng's networkd + iwd -------------
-find "$P/airootfs/etc/systemd/system" -name '*networkd*' -exec rm -f {} +
-find "$P/airootfs/etc/systemd/system" -name 'iwd.service' -exec rm -f {} +
+find "$P/airootfs/etc/systemd/system" -name '*networkd*' -prune -exec rm -rf {} +
+find "$P/airootfs/etc/systemd/system" -name 'iwd.service' -exec rm -rf {} +
 rm -rf "$P/airootfs/etc/systemd/network"
 
 # --- our files ----------------------------------------------------------------
