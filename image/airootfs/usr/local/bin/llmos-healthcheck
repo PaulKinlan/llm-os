@@ -19,7 +19,7 @@ out "LLMOS_SHELL_DOWN daemon=$([[ -n $state ]] && echo up || echo down) ui=disco
   ls -l /dev/dri 2>&1
   systemctl --no-pager --failed
   journalctl -b --no-pager -u llmos-shell -u llmos-firstboot -u getty@tty1 | tail -n 40
-  for f in /home/os/.local/state/llmos/*.log; do
+  for f in /home/os/.local/state/llmos/*.log /run/user/1000/hypr/*/hyprland.log; do
     [[ -f $f ]] || continue
     echo "----- $f -----"
     tail -n 40 "$f"

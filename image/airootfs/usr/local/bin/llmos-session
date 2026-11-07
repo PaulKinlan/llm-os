@@ -8,7 +8,28 @@ choice="${LLMOS_COMPOSITOR:-$(cat /etc/llmos/compositor 2>/dev/null || echo auto
 
 if [[ "$choice" != cage ]] && command -v Hyprland >/dev/null; then
   start=$(date +%s)
-  Hyprland -c /etc/llmos/hyprland.conf > "$STATE/hyprland.log" 2>&1
+  Hyprland -c /etc/llmos/hyprland.conf > "$STATE/hyprland.log" 2>&1 &
+  hypr=$!
+  # Launch the shell ourselves once Hyprland's IPC socket exists, so we do not
+  # depend on how a given Hyprland version reads exec-once from its config.
+  for _ in $(seq 1 100); do
+    sock=$(ls -t "$XDG_RUNTIME_DIR"/hypr/*/.socket.sock 2>/dev/null | head -1)
+    [[ -n $sock ]] && break
+    kill -0 $hypr 2>/dev/null || break
+    sleep 0.2
+  done
+  if [[ -n ${sock:-} ]]; then
+    export HYPRLAND_INSTANCE_SIGNATURE=$(basename "$(dirname "$sock")")
+    for _ in $(seq 1 50); do
+      WAYLAND_DISPLAY=$(cd "$XDG_RUNTIME_DIR" && ls -t wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
+      [[ -n $WAYLAND_DISPLAY ]] && break
+      sleep 0.2
+    done
+    export WAYLAND_DISPLAY
+    echo "$(date -Is) Hyprland up ($HYPRLAND_INSTANCE_SIGNATURE, $WAYLAND_DISPLAY)" >> "$STATE/session.log"
+    /usr/local/bin/llmos-launch &
+  fi
+  wait $hypr
   # a long-lived Hyprland that exits means the user quit; a quick exit means it could not start
   if (( $(date +%s) - start > 20 )); then exit 0; fi
   echo "$(date -Is) Hyprland exited after $(( $(date +%s) - start ))s, falling back to cage" >> "$STATE/session.log"
