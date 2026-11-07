@@ -1,0 +1,32 @@
+# Added on top of archiso's releng package list.
+# session
+hyprland
+cage
+chromium
+nodejs
+# fonts
+noto-fonts
+noto-fonts-emoji
+ttf-dejavu
+# graphics
+mesa
+# network
+networkmanager
+wpa_supplicant
+# audio
+pipewire
+pipewire-pulse
+pipewire-alsa
+wireplumber
+# hardware the model can drive
+brightnessctl
+upower
+bluez
+bluez-utils
+polkit
+# tools
+sudo
+jq
+git
+xdg-utils
+qemu-guest-agent

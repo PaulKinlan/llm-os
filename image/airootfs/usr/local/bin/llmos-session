@@ -1,0 +1,19 @@
+#!/bin/bash
+# Start the compositor: Hyprland if it comes up, else cage (a single-window kiosk
+# compositor that renders in software and works in any VM).
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=llmos
+STATE="$HOME/.local/state/llmos"
+mkdir -p "$STATE"
+choice="${LLMOS_COMPOSITOR:-$(cat /etc/llmos/compositor 2>/dev/null || echo auto)}"
+
+if [[ "$choice" != cage ]] && command -v Hyprland >/dev/null; then
+  start=$(date +%s)
+  Hyprland -c /etc/llmos/hyprland.conf > "$STATE/hyprland.log" 2>&1
+  # a long-lived Hyprland that exits means the user quit; a quick exit means it could not start
+  if (( $(date +%s) - start > 20 )); then exit 0; fi
+  echo "$(date -Is) Hyprland exited after $(( $(date +%s) - start ))s, falling back to cage" >> "$STATE/session.log"
+fi
+
+export LLMOS_COMPOSITOR=cage WLR_RENDERER=pixman WLR_NO_HARDWARE_CURSORS=1
+export LLMOS_CHROMIUM_FLAGS="--disable-gpu ${LLMOS_CHROMIUM_FLAGS:-}"
+exec cage -d -s -- /usr/local/bin/llmos-launch > "$STATE/cage.log" 2>&1

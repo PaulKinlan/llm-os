@@ -1,0 +1,17 @@
+{
+  "name": "llmos-shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The LLM-OS shell: a local daemon running the agent loop plus the web UI it serves.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "LLMOS_FAKE_LLM=1 LLMOS_DRY_RUN=1 node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0"
+  },
+  "devDependencies": {}
+}

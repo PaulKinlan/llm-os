@@ -1,0 +1,11 @@
+[Unit]
+Description=Report on the console when the llmos shell is up (used by the CI boot test)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'for i in $(seq 1 120); do if curl -sf http://127.0.0.1:8800/api/state >/dev/null; then echo "LLMOS_SHELL_UP after $((i*2))s" > /dev/console; exit 0; fi; sleep 2; done; echo "LLMOS_SHELL_DOWN" > /dev/console; exit 1'
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

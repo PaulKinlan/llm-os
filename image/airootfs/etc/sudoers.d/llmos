@@ -1,0 +1,3 @@
+# The assistant runs as "os" and may need root for system changes.
+# Every privileged action goes through a tool call the user approves.
+%wheel ALL=(ALL:ALL) NOPASSWD: ALL

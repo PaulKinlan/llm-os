@@ -1,0 +1,12 @@
+[Unit]
+Description=Create the llmos user and import an API key passed by the VM
+Before=getty@tty1.service systemd-user-sessions.service
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/llmos-firstboot
+
+[Install]
+WantedBy=multi-user.target

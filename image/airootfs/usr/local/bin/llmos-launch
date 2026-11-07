@@ -1,0 +1,27 @@
+#!/bin/bash
+# Start the shell daemon and the full-screen shell window, restarting either if it dies.
+STATE="$HOME/.local/state/llmos"
+mkdir -p "$STATE"
+PORT="${PORT:-8800}"
+
+(
+  while true; do
+    node /usr/lib/llmos/shell/server.mjs >> "$STATE/shell.log" 2>&1
+    echo "$(date -Is) shell daemon exited ($?), restarting" >> "$STATE/shell.log"
+    sleep 1
+  done
+) &
+
+for _ in $(seq 1 100); do
+  curl -sf "http://127.0.0.1:$PORT/api/state" >/dev/null && break
+  sleep 0.2
+done
+
+while true; do
+  # shellcheck disable=SC2086
+  chromium --ozone-platform=wayland --kiosk --app="http://127.0.0.1:$PORT/" \
+    --user-data-dir="$STATE/shell-profile" --no-first-run --noerrdialogs \
+    --disable-session-crashed-bubble --disable-features=Translate,MediaRouter \
+    --password-store=basic $LLMOS_CHROMIUM_FLAGS >> "$STATE/chromium.log" 2>&1
+  sleep 1
+done

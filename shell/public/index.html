@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>llmos</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <aside id="sidebar" aria-label="Projects and apps">
+    <header class="brand"><span class="dot" aria-hidden="true"></span> llmos</header>
+    <button id="new-project" class="primary">New project</button>
+    <nav>
+      <h2>Projects</h2>
+      <ul id="projects"></ul>
+      <h2>Apps</h2>
+      <ul id="apps"></ul>
+    </nav>
+    <footer>
+      <button id="settings-button" class="quiet">Settings</button>
+      <span id="status" class="muted"></span>
+    </footer>
+  </aside>
+
+  <main id="conversation" aria-live="polite">
+    <header id="conv-header"><h1 id="conv-title">Welcome</h1><span id="model" class="muted"></span></header>
+    <div id="messages">
+      <section class="empty">
+        <p class="hello">What would you like to do?</p>
+        <ul class="suggestions">
+          <li><button data-suggest="What's on this machine? Show me the system info.">What's on this machine?</button></li>
+          <li><button data-suggest="Build me a Wi-Fi settings app that lists networks and lets me join one.">Build a Wi-Fi settings app</button></li>
+          <li><button data-suggest="Make a pomodoro timer app.">Make a pomodoro timer</button></li>
+          <li><button data-suggest="Set the volume to 40%.">Set the volume to 40%</button></li>
+        </ul>
+      </section>
+    </div>
+    <form id="composer" autocomplete="off">
+      <textarea id="input" rows="1" placeholder="Ask, or tell the computer what to do…" aria-label="Message"></textarea>
+      <button id="send" class="primary" type="submit">Send</button>
+      <button id="stop" type="button" hidden>Stop</button>
+    </form>
+  </main>
+
+  <section id="stage" aria-label="Apps" hidden>
+    <div id="tabs" role="tablist"></div>
+    <div id="frames"></div>
+  </section>
+
+  <dialog id="confirm" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title">Allow this action?</h2>
+      <p id="confirm-caller" class="muted"></p>
+      <pre id="confirm-summary"></pre>
+      <details><summary>Full request</summary><pre id="confirm-input"></pre></details>
+      <menu>
+        <button value="deny">Deny</button>
+        <button value="allow" class="primary" autofocus>Allow</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="settings" aria-labelledby="settings-title" closedby="any">
+    <form id="key-form">
+      <h2 id="settings-title">Settings</h2>
+      <label for="key">Anthropic API key</label>
+      <input id="key" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+      <p class="muted">Stored on this machine only, readable by the os user (0600).</p>
+      <p id="key-error" class="error" hidden></p>
+      <menu>
+        <button type="button" id="settings-close">Close</button>
+        <button class="primary">Save key</button>
+      </menu>
+    </form>
+  </dialog>
+</body>
+</html>

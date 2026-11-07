@@ -1,0 +1,70 @@
+name: Build and boot the image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shell-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: shell
+      - run: npm test
+        working-directory: shell
+
+  build-iso:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+      options: --privileged
+    steps:
+      - name: Install archiso
+        run: pacman -Syu --noconfirm --needed archiso nodejs npm git
+      - uses: actions/checkout@v4
+      - name: Build ISO
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          ./image/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llmos-iso
+          path: out/*.iso
+          retention-days: 7
+          compression-level: 0
+
+  boot-test:
+    needs: build-iso
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install QEMU
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils
+      - uses: actions/download-artifact@v4
+        with:
+          name: llmos-iso
+          path: out
+      - name: Boot and wait for the shell
+        run: scripts/boot-test.sh "$(ls out/*.iso | head -1)" boot-test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: boot-test
+          path: |
+            boot-test/*.png
+            boot-test/serial.log
